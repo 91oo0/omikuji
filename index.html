@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>おみくじ</title>
+  <style>
+    /* 全体レイアウト */
+    body {
+      font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+      background: #1a1a1a;
+      color: #fff;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: 28px;
+      color: #ffb400;
+      text-shadow: 0 0 10px rgba(255,180,0,0.5);
+    }
+
+    /* 動画コンテナ */
+    .video-container {
+      width: 100%;
+      max-width: 640px;
+      margin: 20px auto;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border: 3px solid #ff6f61;
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* 結果表示エリア */
+    #result-label {
+      font-size: 24px;
+      font-weight: bold;
+      margin: 20px 0;
+      min-height: 1.5em;
+      color: #ff6f61;
+    }
+
+    /* ボタンエリア */
+    #action-area {
+      min-height: 60px;
+    }
+
+    .btn {
+      font-size: 18px;
+      padding: 15px 35px;
+      border: none;
+      border-radius: 50px;
+      color: #fff;
+      cursor: pointer;
+      font-weight: bold;
+      transition: 0.3s;
+      margin: 0 auto 10px auto;
+    }
+
+    /* 引くボタン */
+    #draw-btn {
+      background-color: #ff6f61;
+      box-shadow: 0 4px 15px rgba(255, 111, 97, 0.4);
+    }
+    #draw-btn:hover { background-color: #ff4f40; }
+    #draw-btn:disabled { background-color: #555; cursor: not-allowed; opacity: 0.7; }
+
+    /* トップに戻るボタン */
+    #back-btn {
+      background-color: #3498db;
+      box-shadow: 0 4px 15px rgba(52, 152, 219, 0.4);
+      display: none; /* 最初は非表示 */
+    }
+    #back-btn:hover { background-color: #2980b9; }
+
+    /* 在庫リセットボタン */
+    #reset-btn {
+      background-color: #444;
+      display: none; /* 最初は非表示 */
+    }
+    #reset-btn:hover { background-color: #666; }
+
+    /* 在庫情報 */
+    .info-area {
+      margin-top: 30px;
+      font-size: 14px;
+      color: #888;
+      border-top: 1px solid #333;
+      padding-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🔮 おみくじ 🔮</h1>
+  
+  <div class="video-container">
+    <video id="omikuji-video" playsinline muted autoplay loop>
+      <source id="video-source" src="./waiting.mp4" type="video/mp4">
+      ブラウザが動画再生に対応していません。
+    </video>
+  </div>
+
+  <div id="result-label">ボタンを押してね</div>
+
+  <div id="action-area">
+    <button id="draw-btn" class="btn" onclick="drawOmikuji()">おみくじを引く！</button>
+    <button id="back-btn" class="btn" onclick="backToTop()">トップ画面に戻る</button>
+    <button id="reset-btn" class="btn" onclick="resetInventory()">在庫を補充する（リセット）</button>
+  </div>
+
+  <div class="info-area">
+    <div id="stock-info">残り合計: --- 口</div>
+    <div id="stock-detail" style="font-size: 12px; margin-top:10px;"></div>
+  </div>
+
+  <script>
+    // --- 1. 定数・初期設定 ---
+    const STORAGE_KEY = 'omikuji_v4_data';
+    const initialInventory = {
+      "大吉": { count: 10,  src: "./daikichi.mp4" },
+      "吉":   { count: 20,  src: "./kichi.mp4" },
+      "中吉": { count: 100, src: "./chukichi.mp4" },
+      "小吉": { count: 1000,src: "./shokichi.mp4" }
+    };
+
+    // --- 2. データの読み込み ---
+    let inventory = JSON.parse(localStorage.getItem(STORAGE_KEY)) || JSON.parse(JSON.stringify(initialInventory));
+
+    // HTML要素の取得
+    const video = document.getElementById('omikuji-video');
+    const drawBtn = document.getElementById('draw-btn');
+    const backBtn = document.getElementById('back-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const resultLabel = document.getElementById('result-label');
+    const stockInfo = document.getElementById('stock-info');
+    const stockDetail = document.getElementById('stock-detail');
+
+    // --- 3. UI更新関数 ---
+    function updateUI() {
+      const counts = Object.values(inventory).map(d => d.count);
+      const total = counts.reduce((a, b) => a + b, 0);
+      
+      stockInfo.textContent = `残り合計: ${total} 口`;
+      
+      let detailText = "";
+      for (const [name, data] of Object.entries(inventory)) {
+        detailText += `${name}:${data.count}  `;
+      }
+      stockDetail.textContent = detailText;
+
+      // 在庫切れの時の判定
+      if (total === 0) {
+        drawBtn.style.display = 'none';
+        backBtn.style.display = 'none';
+        resetBtn.style.display = 'inline-block';
+        resultLabel.textContent = "完売しました";
+      }
+    }
+
+    // --- 4. トップに戻る関数 ---
+    function backToTop() {
+      // 表示のリセット
+      resultLabel.textContent = "ボタンを押してね";
+      backBtn.style.display = 'none';
+      drawBtn.style.display = 'inline-block';
+      drawBtn.disabled = false;
+
+      // 動画を待機用に戻す（ループ・ミュートあり）
+      video.loop = true;
+      video.muted = true;
+      video.src = "./waiting.mp4";
+      video.load();
+      video.play().catch(e => console.error("再生失敗:", e));
+      
+      updateUI();
+    }
+
+    // --- 5. 抽選関数 ---
+    async function drawOmikuji() {
+      drawBtn.disabled = true;
+      resultLabel.textContent = "抽選中...";
+
+      let box = [];
+      for (const [name, data] of Object.entries(inventory)) {
+        for (let i = 0; i < data.count; i++) {
+          box.push(name);
+        }
+      }
+
+      if (box.length === 0) return;
+
+      const resultName = box[Math.floor(Math.random() * box.length)];
+      const resultData = inventory[resultName];
+
+      // 在庫更新と保存
+      inventory[resultName].count--;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(inventory));
+
+      // 動画の切り替え（音を出すためミュート解除、ループ解除）
+      video.loop = false;
+      video.muted = false;
+      video.src = resultData.src;
+      video.load();
+      
+      try {
+        await video.play();
+        
+        // 動画再生が終わった時の処理
+        video.onended = () => {
+          resultLabel.textContent = `結果：${resultName}！`;
+          
+          // 在庫が残っていれば「戻る」を表示、なければ「リセット」を表示
+          const total = Object.values(inventory).reduce((a, b) => a + b.count, 0);
+          drawBtn.style.display = 'none';
+          
+          if (total > 0) {
+            backBtn.style.display = 'inline-block';
+          }
+          updateUI();
+        };
+      } catch (err) {
+        console.error("再生エラー:", err);
+        resultLabel.textContent = `結果：${resultName} (再生エラー)`;
+        drawBtn.disabled = false;
+        updateUI();
+      }
+    }
+
+    // --- 6. リセット関数 ---
+    function resetInventory() {
+      if (confirm("おみくじを初期状態（全1130口）に戻しますか？")) {
+        localStorage.removeItem(STORAGE_KEY);
+        location.reload();
+      }
+    }
+
+    // 初回表示の実行
+    updateUI();
+  </script>
+
+</body>
+</html>
