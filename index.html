@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>おみくじ</title>
+  <title>ノジマ 柏モディおみくじ</title>
   <style>
     /* 全体レイアウト */
     body {
@@ -78,24 +78,15 @@
     #back-btn {
       background-color: #3498db;
       box-shadow: 0 4px 15px rgba(52, 152, 219, 0.4);
-      display: none; /* 最初は非表示 */
+      display: none;
     }
     #back-btn:hover { background-color: #2980b9; }
 
-    /* 在庫リセットボタン */
-    #reset-btn {
-      background-color: #444;
-      display: none; /* 最初は非表示 */
-    }
-    #reset-btn:hover { background-color: #666; }
-
-    /* 在庫情報 */
-    .info-area {
-      margin-top: 30px;
-      font-size: 14px;
-      color: #888;
-      border-top: 1px solid #333;
-      padding-top: 20px;
+    /* 注釈 */
+    .footer-note {
+      margin-top: 40px;
+      font-size: 12px;
+      color: #666;
     }
   </style>
 </head>
@@ -115,137 +106,78 @@
   <div id="action-area">
     <button id="draw-btn" class="btn" onclick="drawOmikuji()">おみくじを引く！</button>
     <button id="back-btn" class="btn" onclick="backToTop()">トップ画面に戻る</button>
-    <button id="reset-btn" class="btn" onclick="resetInventory()">在庫を補充する（リセット）</button>
   </div>
 
-  <div class="info-area">
-    <div id="stock-info">残り合計: --- 口</div>
-    <div id="stock-detail" style="font-size: 12px; margin-top:10px;"></div>
-  </div>
+  <p class="footer-note">※このおみくじは確率に基づいて抽選を行っています</p>
 
   <script>
-    // --- 1. 定数・初期設定 ---
-    const STORAGE_KEY = 'omikuji_v4_data';
-    const initialInventory = {
-      "大吉": { count: 10,  src: "./daikichi.mp4" },
-      "吉":   { count: 20,  src: "./kichi.mp4" },
-      "中吉": { count: 100, src: "./chukichi.mp4" },
-      "小吉": { count: 1000,src: "./shokichi.mp4" }
-    };
+    // --- 1. 確率設定（合計100になるように設定） ---
+    const fortuneSettings = [
+      { name: "大吉", probability: 1,  src: "./daikichi.mp4" },
+      { name: "吉",   probability: 2,  src: "./kichi.mp4" },
+      { name: "中吉", probability: 9,  src: "./chukichi.mp4" },
+      { name: "小吉", probability: 88, src: "./shokichi.mp4" }
+    ];
 
-    // --- 2. データの読み込み ---
-    let inventory = JSON.parse(localStorage.getItem(STORAGE_KEY)) || JSON.parse(JSON.stringify(initialInventory));
-
-    // HTML要素の取得
     const video = document.getElementById('omikuji-video');
     const drawBtn = document.getElementById('draw-btn');
     const backBtn = document.getElementById('back-btn');
-    const resetBtn = document.getElementById('reset-btn');
     const resultLabel = document.getElementById('result-label');
-    const stockInfo = document.getElementById('stock-info');
-    const stockDetail = document.getElementById('stock-detail');
 
-    // --- 3. UI更新関数 ---
-    function updateUI() {
-      const counts = Object.values(inventory).map(d => d.count);
-      const total = counts.reduce((a, b) => a + b, 0);
-      
-      stockInfo.textContent = `残り合計: ${total} 口`;
-      
-      let detailText = "";
-      for (const [name, data] of Object.entries(inventory)) {
-        detailText += `${name}:${data.count}  `;
-      }
-      stockDetail.textContent = detailText;
-
-      // 在庫切れの時の判定
-      if (total === 0) {
-        drawBtn.style.display = 'none';
-        backBtn.style.display = 'none';
-        resetBtn.style.display = 'inline-block';
-        resultLabel.textContent = "完売しました";
-      }
-    }
-
-    // --- 4. トップに戻る関数 ---
+    // --- 2. トップに戻る関数 ---
     function backToTop() {
-      // 表示のリセット
       resultLabel.textContent = "ボタンを押してね";
       backBtn.style.display = 'none';
       drawBtn.style.display = 'inline-block';
       drawBtn.disabled = false;
 
-      // 動画を待機用に戻す（ループ・ミュートあり）
       video.loop = true;
       video.muted = true;
       video.src = "./waiting.mp4";
       video.load();
       video.play().catch(e => console.error("再生失敗:", e));
-      
-      updateUI();
     }
 
-    // --- 5. 抽選関数 ---
+    // --- 3. 抽選関数（確率ベース） ---
     async function drawOmikuji() {
       drawBtn.disabled = true;
       resultLabel.textContent = "抽選中...";
 
-      let box = [];
-      for (const [name, data] of Object.entries(inventory)) {
-        for (let i = 0; i < data.count; i++) {
-          box.push(name);
+      // 0〜99の乱数を生成
+      const randomValue = Math.floor(Math.random() * 100);
+      
+      let selectedFortune = null;
+      let currentThreshold = 0;
+
+      // 確率判定ロジック
+      for (const fortune of fortuneSettings) {
+        currentThreshold += fortune.probability;
+        if (randomValue < currentThreshold) {
+          selectedFortune = fortune;
+          break;
         }
       }
 
-      if (box.length === 0) return;
-
-      const resultName = box[Math.floor(Math.random() * box.length)];
-      const resultData = inventory[resultName];
-
-      // 在庫更新と保存
-      inventory[resultName].count--;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(inventory));
-
-      // 動画の切り替え（音を出すためミュート解除、ループ解除）
+      // 動画の切り替え
       video.loop = false;
       video.muted = false;
-      video.src = resultData.src;
+      video.src = selectedFortune.src;
       video.load();
       
       try {
         await video.play();
         
-        // 動画再生が終わった時の処理
         video.onended = () => {
-          resultLabel.textContent = `結果：${resultName}！`;
-          
-          // 在庫が残っていれば「戻る」を表示、なければ「リセット」を表示
-          const total = Object.values(inventory).reduce((a, b) => a + b.count, 0);
+          resultLabel.textContent = `結果：${selectedFortune.name}！`;
           drawBtn.style.display = 'none';
-          
-          if (total > 0) {
-            backBtn.style.display = 'inline-block';
-          }
-          updateUI();
+          backBtn.style.display = 'inline-block';
         };
       } catch (err) {
         console.error("再生エラー:", err);
-        resultLabel.textContent = `結果：${resultName} (再生エラー)`;
+        resultLabel.textContent = `結果：${selectedFortune.name} (再生エラー)`;
         drawBtn.disabled = false;
-        updateUI();
       }
     }
-
-    // --- 6. リセット関数 ---
-    function resetInventory() {
-      if (confirm("おみくじを初期状態（全1130口）に戻しますか？")) {
-        localStorage.removeItem(STORAGE_KEY);
-        location.reload();
-      }
-    }
-
-    // 初回表示の実行
-    updateUI();
   </script>
 
 </body>
